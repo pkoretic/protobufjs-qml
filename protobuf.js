@@ -4,13 +4,56 @@
  * licensed under the bsd-3-clause license
  * see: https://github.com/dcodeio/protobuf.js for details
  */
-var util = {}
 
 /**
- * Array implementation used in the browser. `Uint8Array` if supported, otherwise `Array`.
- * @type {Constructor<Uint8Array>}
+ * Callback as used by {@link util.asPromise}.
+ * @typedef asPromiseCallback
+ * @type {function}
+ * @param {Error|null} error Error, if any
+ * @param {...*} params Additional arguments
+ * @returns {undefined}
  */
-util.Array = Array;
+
+/**
+ * Returns a promise from a node-style callback function.
+ * @memberof util
+ * @param {asPromiseCallback} fn Function to call
+ * @param {*} ctx Function context
+ * @param {...*} params Function arguments
+ * @returns {Promise<*>} Promisified function
+ */
+function asPromise(fn, ctx/*, varargs */) {
+    var params  = new Array(arguments.length - 1),
+        offset  = 0,
+        index   = 2,
+        pending = true;
+    while (index < arguments.length)
+        params[offset++] = arguments[index++];
+    return new Promise(function executor(resolve, reject) {
+        params[offset] = function callback(err/*, varargs */) {
+            if (pending) {
+                pending = false;
+                if (err)
+                    reject(err);
+                else {
+                    var params = new Array(arguments.length - 1),
+                        offset = 0;
+                    while (offset < params.length)
+                        params[offset++] = arguments[offset];
+                    resolve.apply(null, params);
+                }
+            }
+        };
+        try {
+            fn.apply(ctx || null, params);
+        } catch (err) {
+            if (pending) {
+                pending = false;
+                reject(err);
+            }
+        }
+    });
+}
 
 /**
  * A minimal base64 implementation for number arrays.
@@ -141,6 +184,14 @@ base64.decode = function decode(string, buffer, offset) {
     return offset - start;
 };
 
+/**
+ * Tests if the specified string appears to be base64 encoded.
+ * @param {string} string String to test
+ * @returns {boolean} `true` if probably base64 encoded, otherwise false
+ */
+base64.test = function test(string) {
+    return /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(string);
+};
 
 /**
  * Constructs a new event emitter instance.
@@ -215,6 +266,353 @@ EventEmitter.prototype.emit = function emit(evt) {
     }
     return this;
 };
+
+/**
+ * Reads / writes floats / doubles from / to buffers.
+ * @name util.float
+ * @namespace
+ */
+
+/**
+ * Writes a 32 bit float to a buffer using little endian byte order.
+ * @name util.float.writeFloatLE
+ * @function
+ * @param {number} val Value to write
+ * @param {Uint8Array} buf Target buffer
+ * @param {number} pos Target buffer offset
+ * @returns {undefined}
+ */
+
+/**
+ * Writes a 32 bit float to a buffer using big endian byte order.
+ * @name util.float.writeFloatBE
+ * @function
+ * @param {number} val Value to write
+ * @param {Uint8Array} buf Target buffer
+ * @param {number} pos Target buffer offset
+ * @returns {undefined}
+ */
+
+/**
+ * Reads a 32 bit float from a buffer using little endian byte order.
+ * @name util.float.readFloatLE
+ * @function
+ * @param {Uint8Array} buf Source buffer
+ * @param {number} pos Source buffer offset
+ * @returns {number} Value read
+ */
+
+/**
+ * Reads a 32 bit float from a buffer using big endian byte order.
+ * @name util.float.readFloatBE
+ * @function
+ * @param {Uint8Array} buf Source buffer
+ * @param {number} pos Source buffer offset
+ * @returns {number} Value read
+ */
+
+/**
+ * Writes a 64 bit double to a buffer using little endian byte order.
+ * @name util.float.writeDoubleLE
+ * @function
+ * @param {number} val Value to write
+ * @param {Uint8Array} buf Target buffer
+ * @param {number} pos Target buffer offset
+ * @returns {undefined}
+ */
+
+/**
+ * Writes a 64 bit double to a buffer using big endian byte order.
+ * @name util.float.writeDoubleBE
+ * @function
+ * @param {number} val Value to write
+ * @param {Uint8Array} buf Target buffer
+ * @param {number} pos Target buffer offset
+ * @returns {undefined}
+ */
+
+/**
+ * Reads a 64 bit double from a buffer using little endian byte order.
+ * @name util.float.readDoubleLE
+ * @function
+ * @param {Uint8Array} buf Source buffer
+ * @param {number} pos Source buffer offset
+ * @returns {number} Value read
+ */
+
+/**
+ * Reads a 64 bit double from a buffer using big endian byte order.
+ * @name util.float.readDoubleBE
+ * @function
+ * @param {Uint8Array} buf Source buffer
+ * @param {number} pos Source buffer offset
+ * @returns {number} Value read
+ */
+
+// Factory function for the purpose of node-based testing in modified global environments
+function factory(exports) {
+
+    // float: typed array
+    if (typeof Float32Array !== "undefined") (function() {
+
+        var f32 = new Float32Array([ -0 ]),
+            f8b = new Uint8Array(f32.buffer),
+            le  = f8b[3] === 128;
+
+        function writeFloat_f32_cpy(val, buf, pos) {
+            f32[0] = val;
+            buf[pos    ] = f8b[0];
+            buf[pos + 1] = f8b[1];
+            buf[pos + 2] = f8b[2];
+            buf[pos + 3] = f8b[3];
+        }
+
+        function writeFloat_f32_rev(val, buf, pos) {
+            f32[0] = val;
+            buf[pos    ] = f8b[3];
+            buf[pos + 1] = f8b[2];
+            buf[pos + 2] = f8b[1];
+            buf[pos + 3] = f8b[0];
+        }
+
+        /* istanbul ignore next */
+        exports.writeFloatLE = le ? writeFloat_f32_cpy : writeFloat_f32_rev;
+        /* istanbul ignore next */
+        exports.writeFloatBE = le ? writeFloat_f32_rev : writeFloat_f32_cpy;
+
+        function readFloat_f32_cpy(buf, pos) {
+            f8b[0] = buf[pos    ];
+            f8b[1] = buf[pos + 1];
+            f8b[2] = buf[pos + 2];
+            f8b[3] = buf[pos + 3];
+            return f32[0];
+        }
+
+        function readFloat_f32_rev(buf, pos) {
+            f8b[3] = buf[pos    ];
+            f8b[2] = buf[pos + 1];
+            f8b[1] = buf[pos + 2];
+            f8b[0] = buf[pos + 3];
+            return f32[0];
+        }
+
+        /* istanbul ignore next */
+        exports.readFloatLE = le ? readFloat_f32_cpy : readFloat_f32_rev;
+        /* istanbul ignore next */
+        exports.readFloatBE = le ? readFloat_f32_rev : readFloat_f32_cpy;
+
+    // float: ieee754
+    })(); else (function() {
+
+        function writeFloat_ieee754(writeUint, val, buf, pos) {
+            var sign = val < 0 ? 1 : 0;
+            if (sign)
+                val = -val;
+            if (val === 0)
+                writeUint(1 / val > 0 ? /* positive */ 0 : /* negative 0 */ 2147483648, buf, pos);
+            else if (isNaN(val))
+                writeUint(2143289344, buf, pos);
+            else if (val > 3.4028234663852886e+38) // +-Infinity
+                writeUint((sign << 31 | 2139095040) >>> 0, buf, pos);
+            else if (val < 1.1754943508222875e-38) // denormal
+                writeUint((sign << 31 | Math.round(val / 1.401298464324817e-45)) >>> 0, buf, pos);
+            else {
+                var exponent = Math.floor(Math.log(val) / Math.LN2),
+                    mantissa = Math.round(val * Math.pow(2, -exponent) * 8388608) & 8388607;
+                writeUint((sign << 31 | exponent + 127 << 23 | mantissa) >>> 0, buf, pos);
+            }
+        }
+
+        exports.writeFloatLE = writeFloat_ieee754.bind(null, writeUintLE);
+        exports.writeFloatBE = writeFloat_ieee754.bind(null, writeUintBE);
+
+        function readFloat_ieee754(readUint, buf, pos) {
+            var uint = readUint(buf, pos),
+                sign = (uint >> 31) * 2 + 1,
+                exponent = uint >>> 23 & 255,
+                mantissa = uint & 8388607;
+            return exponent === 255
+                ? mantissa
+                ? NaN
+                : sign * Infinity
+                : exponent === 0 // denormal
+                ? sign * 1.401298464324817e-45 * mantissa
+                : sign * Math.pow(2, exponent - 150) * (mantissa + 8388608);
+        }
+
+        exports.readFloatLE = readFloat_ieee754.bind(null, readUintLE);
+        exports.readFloatBE = readFloat_ieee754.bind(null, readUintBE);
+
+    })();
+
+    // double: typed array
+    if (typeof Float64Array !== "undefined") (function() {
+
+        var f64 = new Float64Array([-0]),
+            f8b = new Uint8Array(f64.buffer),
+            le  = f8b[7] === 128;
+
+        function writeDouble_f64_cpy(val, buf, pos) {
+            f64[0] = val;
+            buf[pos    ] = f8b[0];
+            buf[pos + 1] = f8b[1];
+            buf[pos + 2] = f8b[2];
+            buf[pos + 3] = f8b[3];
+            buf[pos + 4] = f8b[4];
+            buf[pos + 5] = f8b[5];
+            buf[pos + 6] = f8b[6];
+            buf[pos + 7] = f8b[7];
+        }
+
+        function writeDouble_f64_rev(val, buf, pos) {
+            f64[0] = val;
+            buf[pos    ] = f8b[7];
+            buf[pos + 1] = f8b[6];
+            buf[pos + 2] = f8b[5];
+            buf[pos + 3] = f8b[4];
+            buf[pos + 4] = f8b[3];
+            buf[pos + 5] = f8b[2];
+            buf[pos + 6] = f8b[1];
+            buf[pos + 7] = f8b[0];
+        }
+
+        /* istanbul ignore next */
+        exports.writeDoubleLE = le ? writeDouble_f64_cpy : writeDouble_f64_rev;
+        /* istanbul ignore next */
+        exports.writeDoubleBE = le ? writeDouble_f64_rev : writeDouble_f64_cpy;
+
+        function readDouble_f64_cpy(buf, pos) {
+            f8b[0] = buf[pos    ];
+            f8b[1] = buf[pos + 1];
+            f8b[2] = buf[pos + 2];
+            f8b[3] = buf[pos + 3];
+            f8b[4] = buf[pos + 4];
+            f8b[5] = buf[pos + 5];
+            f8b[6] = buf[pos + 6];
+            f8b[7] = buf[pos + 7];
+            return f64[0];
+        }
+
+        function readDouble_f64_rev(buf, pos) {
+            f8b[7] = buf[pos    ];
+            f8b[6] = buf[pos + 1];
+            f8b[5] = buf[pos + 2];
+            f8b[4] = buf[pos + 3];
+            f8b[3] = buf[pos + 4];
+            f8b[2] = buf[pos + 5];
+            f8b[1] = buf[pos + 6];
+            f8b[0] = buf[pos + 7];
+            return f64[0];
+        }
+
+        /* istanbul ignore next */
+        exports.readDoubleLE = le ? readDouble_f64_cpy : readDouble_f64_rev;
+        /* istanbul ignore next */
+        exports.readDoubleBE = le ? readDouble_f64_rev : readDouble_f64_cpy;
+
+    // double: ieee754
+    })(); else (function() {
+
+        function writeDouble_ieee754(writeUint, off0, off1, val, buf, pos) {
+            var sign = val < 0 ? 1 : 0;
+            if (sign)
+                val = -val;
+            if (val === 0) {
+                writeUint(0, buf, pos + off0);
+                writeUint(1 / val > 0 ? /* positive */ 0 : /* negative 0 */ 2147483648, buf, pos + off1);
+            } else if (isNaN(val)) {
+                writeUint(0, buf, pos + off0);
+                writeUint(2146959360, buf, pos + off1);
+            } else if (val > 1.7976931348623157e+308) { // +-Infinity
+                writeUint(0, buf, pos + off0);
+                writeUint((sign << 31 | 2146435072) >>> 0, buf, pos + off1);
+            } else {
+                var mantissa;
+                if (val < 2.2250738585072014e-308) { // denormal
+                    mantissa = val / 5e-324;
+                    writeUint(mantissa >>> 0, buf, pos + off0);
+                    writeUint((sign << 31 | mantissa / 4294967296) >>> 0, buf, pos + off1);
+                } else {
+                    var exponent = Math.floor(Math.log(val) / Math.LN2);
+                    if (exponent === 1024)
+                        exponent = 1023;
+                    mantissa = val * Math.pow(2, -exponent);
+                    writeUint(mantissa * 4503599627370496 >>> 0, buf, pos + off0);
+                    writeUint((sign << 31 | exponent + 1023 << 20 | mantissa * 1048576 & 1048575) >>> 0, buf, pos + off1);
+                }
+            }
+        }
+
+        exports.writeDoubleLE = writeDouble_ieee754.bind(null, writeUintLE, 0, 4);
+        exports.writeDoubleBE = writeDouble_ieee754.bind(null, writeUintBE, 4, 0);
+
+        function readDouble_ieee754(readUint, off0, off1, buf, pos) {
+            var lo = readUint(buf, pos + off0),
+                hi = readUint(buf, pos + off1);
+            var sign = (hi >> 31) * 2 + 1,
+                exponent = hi >>> 20 & 2047,
+                mantissa = 4294967296 * (hi & 1048575) + lo;
+            return exponent === 2047
+                ? mantissa
+                ? NaN
+                : sign * Infinity
+                : exponent === 0 // denormal
+                ? sign * 5e-324 * mantissa
+                : sign * Math.pow(2, exponent - 1075) * (mantissa + 4503599627370496);
+        }
+
+        exports.readDoubleLE = readDouble_ieee754.bind(null, readUintLE, 0, 4);
+        exports.readDoubleBE = readDouble_ieee754.bind(null, readUintBE, 4, 0);
+
+    })();
+
+    return exports;
+}
+
+// uint helpers
+
+function writeUintLE(val, buf, pos) {
+    buf[pos    ] =  val        & 255;
+    buf[pos + 1] =  val >>> 8  & 255;
+    buf[pos + 2] =  val >>> 16 & 255;
+    buf[pos + 3] =  val >>> 24;
+}
+
+function writeUintBE(val, buf, pos) {
+    buf[pos    ] =  val >>> 24;
+    buf[pos + 1] =  val >>> 16 & 255;
+    buf[pos + 2] =  val >>> 8  & 255;
+    buf[pos + 3] =  val        & 255;
+}
+
+function readUintLE(buf, pos) {
+    return (buf[pos    ]
+          | buf[pos + 1] << 8
+          | buf[pos + 2] << 16
+          | buf[pos + 3] << 24) >>> 0;
+}
+
+function readUintBE(buf, pos) {
+    return (buf[pos    ] << 24
+          | buf[pos + 1] << 16
+          | buf[pos + 2] << 8
+          | buf[pos + 3]) >>> 0;
+}
+
+/**
+ * Requires a module only if available.
+ * @memberof util
+ * @param {string} moduleName Module to require
+ * @returns {?Object} Required module if available and not empty, otherwise `null`
+ */
+function inquire(moduleName) {
+    try {
+        var mod = eval("quire".replace(/^/,"re"))(moduleName); // eslint-disable-line no-eval
+        if (mod && (mod.length || Object.keys(mod).length))
+            return mod;
+    } catch (e) {} // eslint-disable-line no-empty
+    return null;
+}
 
 /**
  * An allocator as used by {@link util.pool}.
@@ -370,6 +768,15 @@ var protobuf = {};
 var roots = {};
 
 /**
+ * Build type, one of `"full"`, `"light"` or `"minimal"`.
+ * @name build
+ * @type {string}
+ * @const
+ */
+protobuf.build = "minimal";
+
+/* istanbul ignore next */
+/**
  * Reconfigures the library according to the environment.
  * @returns {undefined}
  */
@@ -378,11 +785,13 @@ function configure() {
     util._configure();
 }
 
-Writer._configure = function(BufferWriter_) {
-    BufferWriter = BufferWriter_;
-};
-// Set up buffer utility according to the environment
-Writer._configure(BufferWriter);
+var util = {};
+
+/**
+ * Array implementation used in the browser. `Uint8Array` if supported, otherwise `Array`.
+ * @type {Constructor<Uint8Array>}
+ */
+util.Array = Array
 
 var BufferReader; // cyclic
 
@@ -418,7 +827,14 @@ function Reader(buffer) {
     this.len = buffer.length;
 }
 
-var create_array = function create_array(buffer) {
+var create_array = typeof Uint8Array !== "undefined"
+    ? function create_typed_array(buffer) {
+        if (buffer instanceof Uint8Array || Array.isArray(buffer))
+            return new Reader(buffer);
+        throw Error("illegal buffer");
+    }
+    /* istanbul ignore next */
+    : function create_array(buffer) {
         if (Array.isArray(buffer))
             return new Reader(buffer);
         throw Error("illegal buffer");
@@ -431,7 +847,17 @@ var create_array = function create_array(buffer) {
  * @returns {Reader|BufferReader} A {@link BufferReader} if `buffer` is a Buffer, otherwise a {@link Reader}
  * @throws {Error} If `buffer` is not a valid buffer
  */
-Reader.create = create_array;
+Reader.create = util.Buffer
+    ? function create_buffer_setup(buffer) {
+        return (Reader.create = function create_buffer(buffer) {
+            return util.Buffer.isBuffer(buffer)
+                ? new BufferReader(buffer)
+                /* istanbul ignore next */
+                : create_array(buffer);
+        })(buffer);
+    }
+    /* istanbul ignore next */
+    : create_array;
 
 Reader.prototype._slice = util.Array.prototype.subarray || /* istanbul ignore next */ util.Array.prototype.slice;
 
@@ -786,6 +1212,10 @@ function BufferReader(buffer) {
      */
 }
 
+/* istanbul ignore else */
+if (util.Buffer)
+    BufferReader.prototype._slice = util.Buffer.prototype.slice;
+
 /**
  * @override
  */
@@ -802,6 +1232,192 @@ BufferReader.prototype.string = function read_string_buffer() {
  */
 
 /**
+ * Named roots.
+ * This is where pbjs stores generated structures (the option `-r, --root` specifies a name).
+ * Can also be used manually to make roots available accross modules.
+ * @name roots
+ * @type {Object.<string,Root>}
+ * @example
+ * // pbjs -r myroot -o compiled.js ...
+ *
+ * // in another module:
+ * require("./compiled.js");
+ *
+ * // in any subsequent module:
+ * var root = protobuf.roots["myroot"];
+ */
+
+/**
+ * Streaming RPC helpers.
+ * @namespace
+ */
+var rpc = {};
+
+/**
+ * RPC implementation passed to {@link Service#create} performing a service request on network level, i.e. by utilizing http requests or websockets.
+ * @typedef RPCImpl
+ * @type {function}
+ * @param {Method|rpc.ServiceMethod<Message<{}>,Message<{}>>} method Reflected or static method being called
+ * @param {Uint8Array} requestData Request data
+ * @param {RPCImplCallback} callback Callback function
+ * @returns {undefined}
+ * @example
+ * function rpcImpl(method, requestData, callback) {
+ *     if (util.lcFirst(method.name) !== "myMethod") // compatible with static code
+ *         throw Error("no such method");
+ *     asynchronouslyObtainAResponse(requestData, function(err, responseData) {
+ *         callback(err, responseData);
+ *     });
+ * }
+ */
+
+/**
+ * Node-style callback as used by {@link RPCImpl}.
+ * @typedef RPCImplCallback
+ * @type {function}
+ * @param {Error|null} error Error, if any, otherwise `null`
+ * @param {Uint8Array|null} [response] Response data or `null` to signal end of stream, if there hasn't been an error
+ * @returns {undefined}
+ */
+
+rpc.Service = {};
+
+/**
+ * A service method callback as used by {@link rpc.ServiceMethod|ServiceMethod}.
+ *
+ * Differs from {@link RPCImplCallback} in that it is an actual callback of a service method which may not return `response = null`.
+ * @typedef rpc.ServiceMethodCallback
+ * @template TRes extends Message<TRes>
+ * @type {function}
+ * @param {Error|null} error Error, if any
+ * @param {TRes} [response] Response message
+ * @returns {undefined}
+ */
+
+/**
+ * A service method part of a {@link rpc.Service} as created by {@link Service.create}.
+ * @typedef rpc.ServiceMethod
+ * @template TReq extends Message<TReq>
+ * @template TRes extends Message<TRes>
+ * @type {function}
+ * @param {TReq|Properties<TReq>} request Request message or plain object
+ * @param {rpc.ServiceMethodCallback<TRes>} [callback] Node-style callback called with the error, if any, and the response message
+ * @returns {Promise<Message<TRes>>} Promise if `callback` has been omitted, otherwise `undefined`
+ */
+
+/**
+ * Constructs a new RPC service instance.
+ * @classdesc An RPC service as returned by {@link Service#create}.
+ * @exports rpc.Service
+ * @extends util.EventEmitter
+ * @constructor
+ * @param {RPCImpl} rpcImpl RPC implementation
+ * @param {boolean} [requestDelimited=false] Whether requests are length-delimited
+ * @param {boolean} [responseDelimited=false] Whether responses are length-delimited
+ */
+function Service(rpcImpl, requestDelimited, responseDelimited) {
+
+    if (typeof rpcImpl !== "function")
+        throw TypeError("rpcImpl must be a function");
+
+    util.EventEmitter.call(this);
+
+    /**
+     * RPC implementation. Becomes `null` once the service is ended.
+     * @type {RPCImpl|null}
+     */
+    this.rpcImpl = rpcImpl;
+
+    /**
+     * Whether requests are length-delimited.
+     * @type {boolean}
+     */
+    this.requestDelimited = Boolean(requestDelimited);
+
+    /**
+     * Whether responses are length-delimited.
+     * @type {boolean}
+     */
+    this.responseDelimited = Boolean(responseDelimited);
+}
+
+/**
+ * Calls a service method through {@link rpc.Service#rpcImpl|rpcImpl}.
+ * @param {Method|rpc.ServiceMethod<TReq,TRes>} method Reflected or static method
+ * @param {Constructor<TReq>} requestCtor Request constructor
+ * @param {Constructor<TRes>} responseCtor Response constructor
+ * @param {TReq|Properties<TReq>} request Request message or plain object
+ * @param {rpc.ServiceMethodCallback<TRes>} callback Service callback
+ * @returns {undefined}
+ * @template TReq extends Message<TReq>
+ * @template TRes extends Message<TRes>
+ */
+Service.prototype.rpcCall = function rpcCall(method, requestCtor, responseCtor, request, callback) {
+
+    if (!request)
+        throw TypeError("request must be specified");
+
+    var self = this;
+    if (!callback)
+        return util.asPromise(rpcCall, self, method, requestCtor, responseCtor, request);
+
+    if (!self.rpcImpl) {
+        setTimeout(function() { callback(Error("already ended")); }, 0);
+        return undefined;
+    }
+
+    try {
+        return self.rpcImpl(
+            method,
+            requestCtor[self.requestDelimited ? "encodeDelimited" : "encode"](request).finish(),
+            function rpcCallback(err, response) {
+
+                if (err) {
+                    self.emit("error", err, method);
+                    return callback(err);
+                }
+
+                if (response === null) {
+                    self.end(/* endedByRPC */ true);
+                    return undefined;
+                }
+
+                if (!(response instanceof responseCtor)) {
+                    try {
+                        response = responseCtor[self.responseDelimited ? "decodeDelimited" : "decode"](response);
+                    } catch (err) {
+                        self.emit("error", err, method);
+                        return callback(err);
+                    }
+                }
+
+                self.emit("data", response, method);
+                return callback(null, response);
+            }
+        );
+    } catch (err) {
+        self.emit("error", err, method);
+        setTimeout(function() { callback(err); }, 0);
+        return undefined;
+    }
+};
+
+/**
+ * Ends this service and emits the `end` event.
+ * @param {boolean} [endedByRPC=false] Whether the service has been ended by the RPC implementation.
+ * @returns {rpc.Service} `this`
+ */
+Service.prototype.end = function end(endedByRPC) {
+    if (this.rpcImpl) {
+        if (!endedByRPC) // signal end to rpcImpl
+            this.rpcImpl(null, null, null);
+        this.rpcImpl = null;
+        this.emit("end").off();
+    }
+    return this;
+};
+
+/**
  * Constructs new long bits.
  * @classdesc Helper class for working with the low and high bits of a 64 bit value.
  * @memberof util
@@ -809,7 +1425,7 @@ BufferReader.prototype.string = function read_string_buffer() {
  * @param {number} lo Low 32 bits, unsigned
  * @param {number} hi High 32 bits, unsigned
  */
-function LongBits(lo, hi) {
+var LongBits = function(lo, hi) {
 
     // note that the casts below are theoretically unnecessary as of today, but older statically
     // generated converter code might still call the ctor with signed 32bits. kept for compat.
@@ -826,6 +1442,8 @@ function LongBits(lo, hi) {
      */
     this.hi = hi >>> 0;
 }
+
+util.LongBits = LongBits
 
 /**
  * Zero bits.
@@ -997,6 +1615,8 @@ LongBits.prototype.length = function length() {
          : part2 < 128 ? 9 : 10;
 };
 
+// used to return a Promise where callback is omitted
+util.asPromise = asPromise;
 
 // converts to / from base64 encoded strings
 util.base64 = base64;
@@ -1005,224 +1625,10 @@ util.base64 = base64;
 util.EventEmitter = EventEmitter;
 
 // float handling accross browsers
-util.float = function(exports) {
+util.float = factory;
 
-    // float: typed array
-    if (typeof Float32Array !== "undefined") (function() {
-
-        var f32 = new Float32Array([ -0 ]),
-            f8b = new Uint8Array(f32.buffer),
-            le  = f8b[3] === 128;
-
-        function writeFloat_f32_cpy(val, buf, pos) {
-            f32[0] = val;
-            buf[pos    ] = f8b[0];
-            buf[pos + 1] = f8b[1];
-            buf[pos + 2] = f8b[2];
-            buf[pos + 3] = f8b[3];
-        }
-
-        function writeFloat_f32_rev(val, buf, pos) {
-            f32[0] = val;
-            buf[pos    ] = f8b[3];
-            buf[pos + 1] = f8b[2];
-            buf[pos + 2] = f8b[1];
-            buf[pos + 3] = f8b[0];
-        }
-
-        /* istanbul ignore next */
-        exports.writeFloatLE = le ? writeFloat_f32_cpy : writeFloat_f32_rev;
-        /* istanbul ignore next */
-        exports.writeFloatBE = le ? writeFloat_f32_rev : writeFloat_f32_cpy;
-
-        function readFloat_f32_cpy(buf, pos) {
-            f8b[0] = buf[pos    ];
-            f8b[1] = buf[pos + 1];
-            f8b[2] = buf[pos + 2];
-            f8b[3] = buf[pos + 3];
-            return f32[0];
-        }
-
-        function readFloat_f32_rev(buf, pos) {
-            f8b[3] = buf[pos    ];
-            f8b[2] = buf[pos + 1];
-            f8b[1] = buf[pos + 2];
-            f8b[0] = buf[pos + 3];
-            return f32[0];
-        }
-
-        /* istanbul ignore next */
-        exports.readFloatLE = le ? readFloat_f32_cpy : readFloat_f32_rev;
-        /* istanbul ignore next */
-        exports.readFloatBE = le ? readFloat_f32_rev : readFloat_f32_cpy;
-
-    // float: ieee754
-    })(); else (function() {
-
-        function writeFloat_ieee754(writeUint, val, buf, pos) {
-            var sign = val < 0 ? 1 : 0;
-            if (sign)
-                val = -val;
-            if (val === 0)
-                writeUint(1 / val > 0 ? /* positive */ 0 : /* negative 0 */ 2147483648, buf, pos);
-            else if (isNaN(val))
-                writeUint(2143289344, buf, pos);
-            else if (val > 3.4028234663852886e+38) // +-Infinity
-                writeUint((sign << 31 | 2139095040) >>> 0, buf, pos);
-            else if (val < 1.1754943508222875e-38) // denormal
-                writeUint((sign << 31 | Math.round(val / 1.401298464324817e-45)) >>> 0, buf, pos);
-            else {
-                var exponent = Math.floor(Math.log(val) / Math.LN2),
-                    mantissa = Math.round(val * Math.pow(2, -exponent) * 8388608) & 8388607;
-                writeUint((sign << 31 | exponent + 127 << 23 | mantissa) >>> 0, buf, pos);
-            }
-        }
-
-        exports.writeFloatLE = writeFloat_ieee754.bind(null, writeUintLE);
-        exports.writeFloatBE = writeFloat_ieee754.bind(null, writeUintBE);
-
-        function readFloat_ieee754(readUint, buf, pos) {
-            var uint = readUint(buf, pos),
-                sign = (uint >> 31) * 2 + 1,
-                exponent = uint >>> 23 & 255,
-                mantissa = uint & 8388607;
-            return exponent === 255
-                ? mantissa
-                ? NaN
-                : sign * Infinity
-                : exponent === 0 // denormal
-                ? sign * 1.401298464324817e-45 * mantissa
-                : sign * Math.pow(2, exponent - 150) * (mantissa + 8388608);
-        }
-
-        exports.readFloatLE = readFloat_ieee754.bind(null, readUintLE);
-        exports.readFloatBE = readFloat_ieee754.bind(null, readUintBE);
-
-    })();
-
-    // double: typed array
-    if (typeof Float64Array !== "undefined") (function() {
-
-        var f64 = new Float64Array([-0]),
-            f8b = new Uint8Array(f64.buffer),
-            le  = f8b[7] === 128;
-
-        function writeDouble_f64_cpy(val, buf, pos) {
-            f64[0] = val;
-            buf[pos    ] = f8b[0];
-            buf[pos + 1] = f8b[1];
-            buf[pos + 2] = f8b[2];
-            buf[pos + 3] = f8b[3];
-            buf[pos + 4] = f8b[4];
-            buf[pos + 5] = f8b[5];
-            buf[pos + 6] = f8b[6];
-            buf[pos + 7] = f8b[7];
-        }
-
-        function writeDouble_f64_rev(val, buf, pos) {
-            f64[0] = val;
-            buf[pos    ] = f8b[7];
-            buf[pos + 1] = f8b[6];
-            buf[pos + 2] = f8b[5];
-            buf[pos + 3] = f8b[4];
-            buf[pos + 4] = f8b[3];
-            buf[pos + 5] = f8b[2];
-            buf[pos + 6] = f8b[1];
-            buf[pos + 7] = f8b[0];
-        }
-
-        /* istanbul ignore next */
-        exports.writeDoubleLE = le ? writeDouble_f64_cpy : writeDouble_f64_rev;
-        /* istanbul ignore next */
-        exports.writeDoubleBE = le ? writeDouble_f64_rev : writeDouble_f64_cpy;
-
-        function readDouble_f64_cpy(buf, pos) {
-            f8b[0] = buf[pos    ];
-            f8b[1] = buf[pos + 1];
-            f8b[2] = buf[pos + 2];
-            f8b[3] = buf[pos + 3];
-            f8b[4] = buf[pos + 4];
-            f8b[5] = buf[pos + 5];
-            f8b[6] = buf[pos + 6];
-            f8b[7] = buf[pos + 7];
-            return f64[0];
-        }
-
-        function readDouble_f64_rev(buf, pos) {
-            f8b[7] = buf[pos    ];
-            f8b[6] = buf[pos + 1];
-            f8b[5] = buf[pos + 2];
-            f8b[4] = buf[pos + 3];
-            f8b[3] = buf[pos + 4];
-            f8b[2] = buf[pos + 5];
-            f8b[1] = buf[pos + 6];
-            f8b[0] = buf[pos + 7];
-            return f64[0];
-        }
-
-        /* istanbul ignore next */
-        exports.readDoubleLE = le ? readDouble_f64_cpy : readDouble_f64_rev;
-        /* istanbul ignore next */
-        exports.readDoubleBE = le ? readDouble_f64_rev : readDouble_f64_cpy;
-
-    // double: ieee754
-    })(); else (function() {
-
-        function writeDouble_ieee754(writeUint, off0, off1, val, buf, pos) {
-            var sign = val < 0 ? 1 : 0;
-            if (sign)
-                val = -val;
-            if (val === 0) {
-                writeUint(0, buf, pos + off0);
-                writeUint(1 / val > 0 ? /* positive */ 0 : /* negative 0 */ 2147483648, buf, pos + off1);
-            } else if (isNaN(val)) {
-                writeUint(0, buf, pos + off0);
-                writeUint(2146959360, buf, pos + off1);
-            } else if (val > 1.7976931348623157e+308) { // +-Infinity
-                writeUint(0, buf, pos + off0);
-                writeUint((sign << 31 | 2146435072) >>> 0, buf, pos + off1);
-            } else {
-                var mantissa;
-                if (val < 2.2250738585072014e-308) { // denormal
-                    mantissa = val / 5e-324;
-                    writeUint(mantissa >>> 0, buf, pos + off0);
-                    writeUint((sign << 31 | mantissa / 4294967296) >>> 0, buf, pos + off1);
-                } else {
-                    var exponent = Math.floor(Math.log(val) / Math.LN2);
-                    if (exponent === 1024)
-                        exponent = 1023;
-                    mantissa = val * Math.pow(2, -exponent);
-                    writeUint(mantissa * 4503599627370496 >>> 0, buf, pos + off0);
-                    writeUint((sign << 31 | exponent + 1023 << 20 | mantissa * 1048576 & 1048575) >>> 0, buf, pos + off1);
-                }
-            }
-        }
-
-        exports.writeDoubleLE = writeDouble_ieee754.bind(null, writeUintLE, 0, 4);
-        exports.writeDoubleBE = writeDouble_ieee754.bind(null, writeUintBE, 4, 0);
-
-        function readDouble_ieee754(readUint, off0, off1, buf, pos) {
-            var lo = readUint(buf, pos + off0),
-                hi = readUint(buf, pos + off1);
-            var sign = (hi >> 31) * 2 + 1,
-                exponent = hi >>> 20 & 2047,
-                mantissa = 4294967296 * (hi & 1048575) + lo;
-            return exponent === 2047
-                ? mantissa
-                ? NaN
-                : sign * Infinity
-                : exponent === 0 // denormal
-                ? sign * 5e-324 * mantissa
-                : sign * Math.pow(2, exponent - 1075) * (mantissa + 4503599627370496);
-        }
-
-        exports.readDoubleLE = readDouble_ieee754.bind(null, readUintLE, 0, 4);
-        exports.readDoubleBE = readDouble_ieee754.bind(null, readUintBE, 4, 0);
-
-    })();
-
-    return exports;
-}
+// requires modules optionally and hides the call from bundlers
+util.inquire = inquire;
 
 // converts to / from utf8 encoded strings
 util.utf8 = utf8;
@@ -1237,6 +1643,39 @@ util.LongBits = LongBits;
 util.global = {}
 
 /**
+ * An immuable empty array.
+ * @memberof util
+ * @type {Array.<*>}
+ * @const
+ */
+util.emptyArray = Object.freeze ? Object.freeze([]) : /* istanbul ignore next */ []; // used on prototypes
+
+/**
+ * An immutable empty object.
+ * @type {Object}
+ * @const
+ */
+util.emptyObject = Object.freeze ? Object.freeze({}) : /* istanbul ignore next */ {}; // used on prototypes
+
+/**
+ * Whether running within node or not.
+ * @memberof util
+ * @type {boolean}
+ * @const
+ */
+util.isNode = Boolean(util.global.process && util.global.process.versions && util.global.process.versions.node);
+
+/**
+ * Tests if the specified value is an integer.
+ * @function
+ * @param {*} value Value to test
+ * @returns {boolean} `true` if the value is an integer
+ */
+util.isInteger = Number.isInteger || /* istanbul ignore next */ function isInteger(value) {
+    return typeof value === "number" && isFinite(value) && Math.floor(value) === value;
+};
+
+/**
  * Tests if the specified value is a string.
  * @param {*} value Value to test
  * @returns {boolean} `true` if the value is a string
@@ -1244,6 +1683,60 @@ util.global = {}
 util.isString = function isString(value) {
     return typeof value === "string" || value instanceof String;
 };
+
+/**
+ * Tests if the specified value is a non-null object.
+ * @param {*} value Value to test
+ * @returns {boolean} `true` if the value is a non-null object
+ */
+util.isObject = function isObject(value) {
+    return value && typeof value === "object";
+};
+
+/**
+ * Checks if a property on a message is considered to be present.
+ * This is an alias of {@link util.isSet}.
+ * @function
+ * @param {Object} obj Plain object or message instance
+ * @param {string} prop Property name
+ * @returns {boolean} `true` if considered to be present, otherwise `false`
+ */
+util.isset =
+
+/**
+ * Checks if a property on a message is considered to be present.
+ * @param {Object} obj Plain object or message instance
+ * @param {string} prop Property name
+ * @returns {boolean} `true` if considered to be present, otherwise `false`
+ */
+util.isSet = function isSet(obj, prop) {
+    var value = obj[prop];
+    if (value != null && obj.hasOwnProperty(prop)) // eslint-disable-line eqeqeq, no-prototype-builtins
+        return typeof value !== "object" || (Array.isArray(value) ? value.length : Object.keys(value).length) > 0;
+    return false;
+};
+
+/**
+ * Any compatible Buffer instance.
+ * This is a minimal stand-alone definition of a Buffer instance. The actual type is that exported by node's typings.
+ * @interface Buffer
+ * @extends Uint8Array
+ */
+
+/**
+ * Node's Buffer class if available.
+ * @type {Constructor<Buffer>}
+ */
+util.Buffer = (function() {
+    try {
+        var Buffer = util.inquire("buffer").Buffer;
+        // refuse to use non-node buffers if not explicitly assigned (perf reasons):
+        return Buffer.prototype.utf8Write ? Buffer : /* istanbul ignore next */ null;
+    } catch (e) {
+        /* istanbul ignore next */
+        return null;
+    }
+})();
 
 // Internal alias of or polyfull for Buffer.from.
 util._Buffer_from = null;
@@ -1259,8 +1752,14 @@ util._Buffer_allocUnsafe = null;
 util.newBuffer = function newBuffer(sizeOrArray) {
     /* istanbul ignore next */
     return typeof sizeOrArray === "number"
-            ? new util.Array(sizeOrArray)
-            : sizeOrArray
+        ? util.Buffer
+            ? util._Buffer_allocUnsafe(sizeOrArray)
+            : new util.Array(sizeOrArray)
+        : util.Buffer
+            ? util._Buffer_from(sizeOrArray)
+            : typeof Uint8Array === "undefined"
+                ? sizeOrArray
+                : new Uint8Array(sizeOrArray);
 };
 
 /**
@@ -1276,7 +1775,9 @@ util.newBuffer = function newBuffer(sizeOrArray) {
  * Long.js's Long class if available.
  * @type {Constructor<Long>}
  */
-util.Long = null
+util.Long = /* istanbul ignore next */ util.global.dcodeIO && /* istanbul ignore next */ util.global.dcodeIO.Long
+         || /* istanbul ignore next */ util.global.Long
+         || util.inquire("long");
 
 /**
  * Regular expression used to verify 2 bit (`bool`) map keys.
@@ -1376,6 +1877,8 @@ function newError(name) {
         if (properties)
             merge(this, properties);
     }
+
+    (CustomError.prototype = Object.create(Error.prototype)).constructor = CustomError;
 
     Object.defineProperty(CustomError.prototype, "name", { get: function() { return name; } });
 
@@ -1495,8 +1998,24 @@ util.toJSONOptions = {
 
 // Sets up buffer utility according to the environment (called in index-minimal)
 util._configure = function() {
-    util._Buffer_from = util._Buffer_allocUnsafe = null;
-    return;
+    var Buffer = util.Buffer;
+    /* istanbul ignore if */
+    if (!Buffer) {
+        util._Buffer_from = util._Buffer_allocUnsafe = null;
+        return;
+    }
+    // because node 4.x buffers are incompatible & immutable
+    // see: https://github.com/dcodeIO/protobuf.js/pull/665
+    util._Buffer_from = Buffer.from !== Uint8Array.from && Buffer.from ||
+        /* istanbul ignore next */
+        function Buffer_from(value, encoding) {
+            return new Buffer(value, encoding);
+        };
+    util._Buffer_allocUnsafe = Buffer.allocUnsafe ||
+        /* istanbul ignore next */
+        function Buffer_allocUnsafe(size) {
+            return new Buffer(size);
+        };
 };
 
 var BufferWriter; // cyclic
@@ -1618,9 +2137,16 @@ function Writer() {
  * @function
  * @returns {BufferWriter|Writer} A {@link BufferWriter} when Buffers are supported, otherwise a {@link Writer}
  */
-Writer.create = function create_array() {
-    return new Writer();
-};
+Writer.create = util.Buffer
+    ? function create_buffer_setup() {
+        return (Writer.create = function create_buffer() {
+            return new BufferWriter();
+        })();
+    }
+    /* istanbul ignore next */
+    : function create_array() {
+        return new Writer();
+    };
 
 /**
  * Allocates a buffer of the specified size.
@@ -1943,7 +2469,10 @@ Writer._configure = function(BufferWriter_) {
     BufferWriter = BufferWriter_;
 };
 
+// extends Writer
 (BufferWriter.prototype = Object.create(Writer.prototype)).constructor = BufferWriter;
+
+var Buffer = util.Buffer;
 
 /**
  * Constructs a new buffer writer instance.
@@ -1964,7 +2493,13 @@ BufferWriter.alloc = function alloc_buffer(size) {
     return (BufferWriter.alloc = util._Buffer_allocUnsafe)(size);
 };
 
-var writeBytesBuffer = function writeBytesBuffer_copy(val, buf, pos) {
+var writeBytesBuffer = Buffer && Buffer.prototype instanceof Uint8Array && Buffer.prototype.set.name === "set"
+    ? function writeBytesBuffer_set(val, buf, pos) {
+        buf.set(val, pos); // faster than copy (requires node >= 4 where Buffers extend Uint8Array and set is properly inherited)
+                           // also works for plain array values
+    }
+    /* istanbul ignore next */
+    : function writeBytesBuffer_copy(val, buf, pos) {
         if (val.copy) // Buffer values
             val.copy(buf, pos, 0, val.length);
         else for (var i = 0; i < val.length;) // plain array values
@@ -2002,4 +2537,14 @@ BufferWriter.prototype.string = function write_string_buffer(value) {
     return this;
 };
 
+
+/**
+ * Finishes the write operation.
+ * @name BufferWriter#finish
+ * @function
+ * @returns {Buffer} Finished buffer
+ */
+
+// Set up buffer utility according to the environment
+Writer._configure(BufferWriter);
 configure();
